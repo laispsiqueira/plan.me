@@ -1,5 +1,6 @@
 import React from 'react';
 import { usePlan } from '../context/PlanContext';
+import { useAuth } from '../context/AuthContext';
 import { ActiveTab, EnergyLevel } from '../types';
 import { 
   Compass, 
@@ -13,10 +14,13 @@ import {
   BatteryMedium, 
   Sparkles,
   Heart,
-  Inbox
+  Inbox,
+  LogOut,
+  User
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
+  const { user, userProfile, logout } = useAuth();
   const {
     activeTab,
     setActiveTab,
@@ -148,6 +152,37 @@ export const Navbar: React.FC = () => {
                 <span className="hidden md:inline">Novo Sonho</span>
               </button>
             </div>
+
+            {/* User Account / Profile */}
+            {user && (
+              <div className="flex items-center space-x-2 pl-2 border-l border-[#EBE6DD]">
+                <div
+                  className="flex items-center space-x-2 py-1 px-2 rounded-lg bg-[#F5EFEB] border border-[#E8DFC8] text-xs text-[#242220]"
+                  title={user.email || ''}
+                >
+                  <div className="w-6 h-6 rounded-full bg-[#2D332F] text-[#FAF8F5] flex items-center justify-center font-serif text-[11px] font-semibold">
+                    {(userProfile?.name || user.displayName || 'LS')
+                      .split(' ')
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join('')
+                      .toUpperCase()}
+                  </div>
+                  <span className="hidden sm:inline font-medium max-w-[110px] truncate">
+                    {userProfile?.name || user.displayName || 'Lais Siqueira'}
+                  </span>
+                </div>
+
+                <button
+                  id="header-logout-button"
+                  onClick={logout}
+                  title="Sair da conta"
+                  className="p-1.5 rounded-lg border border-[#DDD6CB] bg-[#FFFFFF] text-[#7A736A] hover:text-[#B85D3B] hover:bg-[#FAF6F0] transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

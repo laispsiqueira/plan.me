@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  deleteDoc,
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { useAuth } from './AuthContext';
+import {
   Era,
   Milestone,
   Task,
@@ -23,6 +32,8 @@ import {
   initialSemesterGoals,
   getTodayDateStr,
 } from '../data/initialData';
+import { habitSyncReducer } from '../hooks/useHabitSync';
+import { Logger } from '../lib/logger/Logger';
 
 interface PlanContextType {
   // State
@@ -115,100 +126,25 @@ interface PlanContextType {
 
 const PlanContext = createContext<PlanContextType | undefined>(undefined);
 
-const STORAGE_KEYS = {
-  ERAS: 'planme_eras_v2',
-  MILESTONES: 'planme_milestones_v2',
-  TASKS: 'planme_tasks_v2',
-  TIMEBLOCKS: 'planme_timeblocks_v2',
-  CHECKIN: 'planme_checkin_v2',
-  HABITS: 'planme_habits_v2',
-  MONTH_FOCUSES: 'planme_month_focuses_v2',
-  SEMESTER_GOALS: 'planme_semester_goals_v2',
-};
-
 export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [eras, setEras] = useState<Era[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.ERAS);
-      return stored ? JSON.parse(stored) : initialEras;
-    } catch {
-      return initialEras;
-    }
-  });
+  const { user } = useAuth();
 
-  const [milestones, setMilestones] = useState<Milestone[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.MILESTONES);
-      return stored ? JSON.parse(stored) : initialMilestones;
-    } catch {
-      return initialMilestones;
-    }
-  });
-
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.TASKS);
-      return stored ? JSON.parse(stored) : initialTasks;
-    } catch {
-      return initialTasks;
-    }
-  });
-
-  const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.TIMEBLOCKS);
-      return stored ? JSON.parse(stored) : initialTimeBlocks;
-    } catch {
-      return initialTimeBlocks;
-    }
-  });
-
-  const [dailyCheckin, setDailyCheckin] = useState<DailyCheckin>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.CHECKIN);
-      const parsed = stored ? JSON.parse(stored) : initialCheckin;
-      if (parsed && parsed.date === getTodayDateStr()) {
-        return parsed;
-      }
-      return {
-        date: getTodayDateStr(),
-        energyLevel: 'medium',
-        selectedPillars: [],
-        intention: '',
-        completedCheckin: false,
-      };
-    } catch {
-      return initialCheckin;
-    }
+  const [eras, setEras] = useState<Era[]>(initialEras);
+  const [milestones, setMilestones] = useState<Milestone[]>(initialMilestones);
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>(initialTimeBlocks);
+  const [habits, setHabits] = useState<Habit[]>(initialHabits);
+  const [monthFocuses, setMonthFocuses] = useState<MonthFocus[]>(initialMonthFocuses);
+  const [semesterGoals, setSemesterGoals] = useState<SemesterGoal[]>(initialSemesterGoals);
+  const [dailyCheckin, setDailyCheckin] = useState<DailyCheckin>({
+    date: getTodayDateStr(),
+    energyLevel: 'medium',
+    selectedPillars: [],
+    intention: '',
+    completedCheckin: false,
   });
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dump');
-  const [habits, setHabits] = useState<Habit[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.HABITS);
-      return stored ? JSON.parse(stored) : initialHabits;
-    } catch {
-      return initialHabits;
-    }
-  });
-
-  const [monthFocuses, setMonthFocuses] = useState<MonthFocus[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.MONTH_FOCUSES);
-      return stored ? JSON.parse(stored) : initialMonthFocuses;
-    } catch {
-      return initialMonthFocuses;
-    }
-  });
-
-  const [semesterGoals, setSemesterGoals] = useState<SemesterGoal[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.SEMESTER_GOALS);
-      return stored ? JSON.parse(stored) : initialSemesterGoals;
-    } catch {
-      return initialSemesterGoals;
-    }
-  });
 
   const [isCheckinOpen, setIsCheckinOpen] = useState<boolean>(false);
   const [isRespiteBoxOpen, setIsRespiteBoxOpen] = useState<boolean>(false);
@@ -225,91 +161,161 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [preselectedStartTime, setPreselectedStartTime] = useState<string | null>(null);
   const [preselectedEndTime, setPreselectedEndTime] = useState<string | null>(null);
 
-  // Cleanup old v1 test keys on initial mount
+  // Firestore Sync: when user changes, bind isolated subcollections
   useEffect(() => {
-    try {
-      const oldKeys = [
-        'planme_eras_v1',
-        'planme_milestones_v1',
-        'planme_tasks_v1',
-        'planme_timeblocks_v1',
-        'planme_checkin_v1',
-        'planme_habits_v1',
-        'planme_month_focuses_v1',
-        'planme_semester_goals_v1',
-      ];
-      oldKeys.forEach((k) => localStorage.removeItem(k));
-    } catch {}
-  }, []);
+    if (!user) {
+      // Clear data if logged out
+      setEras([]);
+      setMilestones([]);
+      setTasks([]);
+      setTimeBlocks([]);
+      setHabits([]);
+      setMonthFocuses([]);
+      setSemesterGoals([]);
+      return;
+    }
 
-  const clearAllData = () => {
-    setEras([]);
-    setMilestones([]);
-    setTasks([]);
-    setTimeBlocks([]);
-    setHabits([]);
-    setMonthFocuses([]);
-    setSemesterGoals([]);
-    setDailyCheckin({
-      date: getTodayDateStr(),
-      energyLevel: 'medium',
-      selectedPillars: [],
-      intention: '',
-      completedCheckin: false,
-    });
-    try {
-      Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
-    } catch {}
-  };
+    const uid = user.uid;
 
-  // Persistence effects
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.ERAS, JSON.stringify(eras));
-    } catch {}
-  }, [eras]);
+    // 1. Tasks Listener
+    const tasksUnsub = onSnapshot(
+      collection(db, 'users', uid, 'tasks'),
+      (snapshot) => {
+        const loaded: Task[] = [];
+        snapshot.forEach((docSnap) => {
+          loaded.push({ ...docSnap.data(), id: docSnap.id } as Task);
+        });
+        setTasks(loaded);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${uid}/tasks`);
+      }
+    );
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.MILESTONES, JSON.stringify(milestones));
-    } catch {}
-  }, [milestones]);
+    // 2. Habits Listener
+    const habitsUnsub = onSnapshot(
+      collection(db, 'users', uid, 'habits'),
+      (snapshot) => {
+        const loaded: Habit[] = [];
+        snapshot.forEach((docSnap) => {
+          loaded.push({ ...docSnap.data(), id: docSnap.id } as Habit);
+        });
+        setHabits(loaded);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${uid}/habits`);
+      }
+    );
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
-    } catch {}
-  }, [tasks]);
+    // 3. TimeBlocks Listener
+    const timeBlocksUnsub = onSnapshot(
+      collection(db, 'users', uid, 'timeBlocks'),
+      (snapshot) => {
+        const loaded: TimeBlock[] = [];
+        snapshot.forEach((docSnap) => {
+          loaded.push({ ...docSnap.data(), id: docSnap.id } as TimeBlock);
+        });
+        setTimeBlocks(loaded);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${uid}/timeBlocks`);
+      }
+    );
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.TIMEBLOCKS, JSON.stringify(timeBlocks));
-    } catch {}
-  }, [timeBlocks]);
+    // 4. Eras Listener
+    const erasUnsub = onSnapshot(
+      collection(db, 'users', uid, 'eras'),
+      (snapshot) => {
+        const loaded: Era[] = [];
+        snapshot.forEach((docSnap) => {
+          loaded.push({ ...docSnap.data(), id: docSnap.id } as Era);
+        });
+        setEras(loaded);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${uid}/eras`);
+      }
+    );
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.CHECKIN, JSON.stringify(dailyCheckin));
-    } catch {}
-  }, [dailyCheckin]);
+    // 5. Milestones Listener
+    const milestonesUnsub = onSnapshot(
+      collection(db, 'users', uid, 'milestones'),
+      (snapshot) => {
+        const loaded: Milestone[] = [];
+        snapshot.forEach((docSnap) => {
+          loaded.push({ ...docSnap.data(), id: docSnap.id } as Milestone);
+        });
+        setMilestones(loaded);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${uid}/milestones`);
+      }
+    );
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.HABITS, JSON.stringify(habits));
-    } catch {}
-  }, [habits]);
+    // 6. Month Focuses Listener
+    const monthFocusesUnsub = onSnapshot(
+      collection(db, 'users', uid, 'monthFocuses'),
+      (snapshot) => {
+        const loaded: MonthFocus[] = [];
+        snapshot.forEach((docSnap) => {
+          loaded.push({ ...docSnap.data(), monthKey: docSnap.id } as MonthFocus);
+        });
+        setMonthFocuses(loaded);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${uid}/monthFocuses`);
+      }
+    );
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.MONTH_FOCUSES, JSON.stringify(monthFocuses));
-    } catch {}
-  }, [monthFocuses]);
+    // 7. Semester Goals Listener
+    const semesterGoalsUnsub = onSnapshot(
+      collection(db, 'users', uid, 'semesterGoals'),
+      (snapshot) => {
+        const loaded: SemesterGoal[] = [];
+        snapshot.forEach((docSnap) => {
+          loaded.push({ ...docSnap.data(), id: docSnap.id } as SemesterGoal);
+        });
+        setSemesterGoals(loaded);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${uid}/semesterGoals`);
+      }
+    );
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.SEMESTER_GOALS, JSON.stringify(semesterGoals));
-    } catch {}
-  }, [semesterGoals]);
+    // 8. Daily Checkin Listener for Today
+    const todayStr = getTodayDateStr();
+    const checkinDocRef = doc(db, 'users', uid, 'dailyCheckins', todayStr);
+    const checkinUnsub = onSnapshot(
+      checkinDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setDailyCheckin(docSnap.data() as DailyCheckin);
+        } else {
+          setDailyCheckin({
+            date: todayStr,
+            energyLevel: 'medium',
+            selectedPillars: [],
+            intention: '',
+            completedCheckin: false,
+          });
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${uid}/dailyCheckins/${todayStr}`);
+      }
+    );
+
+    return () => {
+      tasksUnsub();
+      habitsUnsub();
+      timeBlocksUnsub();
+      erasUnsub();
+      milestonesUnsub();
+      monthFocusesUnsub();
+      semesterGoalsUnsub();
+      checkinUnsub();
+    };
+  }, [user]);
 
   // Open checkin automatically if not yet completed for today
   useEffect(() => {
@@ -347,27 +353,40 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round(totalProgress / eraMilestones.length);
   };
 
-  // Actions
-  const setEnergyLevel = (level: EnergyLevel, intention?: string, pillars?: string[]) => {
-    setDailyCheckin((prev) => ({
-      ...prev,
-      date: getTodayDateStr(),
+  // Actions with isolated Firestore persistence
+  const setEnergyLevel = async (level: EnergyLevel, intention?: string, pillars?: string[]) => {
+    const todayStr = getTodayDateStr();
+    const updatedCheckin: DailyCheckin = {
+      date: todayStr,
       energyLevel: level,
-      intention: intention !== undefined ? intention : prev.intention,
-      selectedPillars: pillars !== undefined ? pillars : prev.selectedPillars,
+      intention: intention !== undefined ? intention : dailyCheckin.intention,
+      selectedPillars: pillars !== undefined ? pillars : dailyCheckin.selectedPillars,
       completedCheckin: true,
-    }));
+      userId: user?.uid,
+    };
+
+    setDailyCheckin(updatedCheckin);
+
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'dailyCheckins', todayStr), updatedCheckin, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/dailyCheckins/${todayStr}`);
+      }
+    }
 
     if (pillars && pillars.length > 0) {
       setTasks((prev) =>
-        prev.map((t) => ({
-          ...t,
-          isPillar: pillars.includes(t.id),
-        }))
+        prev.map((t) => {
+          const isPillar = pillars.includes(t.id);
+          if (user && t.isPillar !== isPillar) {
+            setDoc(doc(db, 'users', user.uid, 'tasks', t.id), { isPillar }, { merge: true }).catch(console.error);
+          }
+          return { ...t, isPillar };
+        })
       );
     }
 
-    // If level is low_respite, gently suggest activating the Respite Flow if there are heavy tasks
     if (level === 'low_respite') {
       const activeTasksCount = tasks.filter(
         (t) => t.status !== 'completed' && t.status !== 'respite_moved' && !t.isPillar
@@ -378,338 +397,516 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const toggleTaskStatus = (taskId: string) => {
+  const toggleTaskStatus = async (taskId: string) => {
     const todayStr = getTodayDateStr();
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          const newStatus = t.status === 'completed' ? 'todo' : 'completed';
+    const targetTask = tasks.find((t) => t.id === taskId);
+    if (!targetTask) return;
 
-          // Sync with linked habit if any
-          const targetHabitId = t.habitId || habits.find((h) => h.taskId === taskId)?.id;
-          if (targetHabitId) {
-            setHabits((prevH) =>
-              prevH.map((h) => {
-                if (h.id !== targetHabitId) return h;
-                const hasToday = h.completedDates.includes(todayStr);
-                if (newStatus === 'completed' && !hasToday) {
-                  return { ...h, completedDates: [...h.completedDates, todayStr] };
-                } else if (newStatus !== 'completed' && hasToday) {
-                  return { ...h, completedDates: h.completedDates.filter((d) => d !== todayStr) };
-                }
-                return h;
-              })
-            );
+    const newStatus: TaskStatus = targetTask.status === 'completed' ? 'todo' : 'completed';
+    const completedAt = newStatus === 'completed' ? new Date().toISOString() : undefined;
+
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus, completedAt } : t))
+    );
+
+    if (user) {
+      try {
+        await setDoc(
+          doc(db, 'users', user.uid, 'tasks', taskId),
+          { status: newStatus, completedAt: completedAt || null },
+          { merge: true }
+        );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/tasks/${taskId}`);
+      }
+    }
+
+    // Sync with linked habit if any
+    const targetHabitId = targetTask.habitId || habits.find((h) => h.taskId === taskId)?.id;
+    if (targetHabitId) {
+      setHabits((prevH) =>
+        prevH.map((h) => {
+          if (h.id !== targetHabitId) return h;
+          const hasToday = h.completedDates.includes(todayStr);
+          let newDates = h.completedDates;
+          if (newStatus === 'completed' && !hasToday) {
+            newDates = [...h.completedDates, todayStr];
+          } else if (newStatus !== 'completed' && hasToday) {
+            newDates = h.completedDates.filter((d) => d !== todayStr);
           }
-
-          return {
-            ...t,
-            status: newStatus,
-            completedAt: newStatus === 'completed' ? new Date().toISOString() : undefined,
-          };
-        }
-        return t;
-      })
-    );
+          if (user) {
+            setDoc(doc(db, 'users', user.uid, 'habits', h.id), { completedDates: newDates }, { merge: true }).catch(console.error);
+          }
+          return { ...h, completedDates: newDates };
+        })
+      );
+    }
   };
 
-  const setTaskStatus = (taskId: string, status: TaskStatus) => {
+  const setTaskStatus = async (taskId: string, status: TaskStatus) => {
+    const completedAt = status === 'completed' ? new Date().toISOString() : undefined;
     setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          return {
-            ...t,
-            status,
-            completedAt: status === 'completed' ? new Date().toISOString() : undefined,
-          };
-        }
-        return t;
-      })
+      prev.map((t) => (t.id === taskId ? { ...t, status, completedAt } : t))
     );
+
+    if (user) {
+      try {
+        await setDoc(
+          doc(db, 'users', user.uid, 'tasks', taskId),
+          { status, completedAt: completedAt || null },
+          { merge: true }
+        );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/tasks/${taskId}`);
+      }
+    }
   };
 
-  const togglePillar = (taskId: string) => {
+  const togglePillar = async (taskId: string) => {
+    const targetTask = tasks.find((t) => t.id === taskId);
+    if (!targetTask) return;
+
+    const newIsPillar = !targetTask.isPillar;
     setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          const newIsPillar = !t.isPillar;
-          return { ...t, isPillar: newIsPillar };
-        }
-        return t;
-      })
+      prev.map((t) => (t.id === taskId ? { ...t, isPillar: newIsPillar } : t))
     );
+
+    if (user) {
+      try {
+        await setDoc(
+          doc(db, 'users', user.uid, 'tasks', taskId),
+          { isPillar: newIsPillar },
+          { merge: true }
+        );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/tasks/${taskId}`);
+      }
+    }
 
     setDailyCheckin((prev) => {
       const isAlready = prev.selectedPillars.includes(taskId);
       const newPillars = isAlready
         ? prev.selectedPillars.filter((id) => id !== taskId)
-        : [...prev.selectedPillars.slice(0, 2), taskId]; // max 3
-      return { ...prev, selectedPillars: newPillars };
+        : [...prev.selectedPillars.slice(0, 2), taskId];
+      
+      const updated = { ...prev, selectedPillars: newPillars };
+      if (user) {
+        setDoc(doc(db, 'users', user.uid, 'dailyCheckins', prev.date), { selectedPillars: newPillars }, { merge: true }).catch(console.error);
+      }
+      return updated;
     });
   };
 
-  const saveTask = (taskData: Omit<Task, 'id' | 'createdAt'> & { id?: string }) => {
-    if (taskData.id) {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskData.id ? { ...t, ...taskData } : t))
-      );
-    } else {
-      const newTask: Task = {
-        ...taskData,
-        id: `task-${Date.now()}`,
-        createdAt: getTodayDateStr(),
-      };
-      setTasks((prev) => [newTask, ...prev]);
+  const saveTask = async (taskData: Omit<Task, 'id' | 'createdAt'> & { id?: string }) => {
+    const taskId = taskData.id || `task-${Date.now()}`;
+    const taskToSave: Task = {
+      ...taskData,
+      id: taskId,
+      userId: user?.uid,
+      createdAt: taskData.id ? (tasks.find((t) => t.id === taskData.id)?.createdAt || getTodayDateStr()) : getTodayDateStr(),
+    };
+
+    setTasks((prev) => {
+      const exists = prev.some((t) => t.id === taskId);
+      return exists ? prev.map((t) => (t.id === taskId ? taskToSave : t)) : [taskToSave, ...prev];
+    });
+
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'tasks', taskId), taskToSave, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/tasks/${taskId}`);
+      }
     }
   };
 
-  const deleteTask = (taskId: string) => {
+  const deleteTask = async (taskId: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
-    // Also remove from timeblocks if linked
     setTimeBlocks((prev) => prev.map((tb) => (tb.taskId === taskId ? { ...tb, taskId: undefined } : tb)));
+
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'tasks', taskId));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/tasks/${taskId}`);
+      }
+    }
   };
 
-  const moveTaskToDate = (taskId: string, newDate: string) => {
+  const moveTaskToDate = async (taskId: string, newDate: string) => {
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, dueDate: newDate } : t))
     );
-  };
 
-  const moveToRespite = (taskId: string, reason?: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          return {
-            ...t,
-            status: 'respite_moved',
-            isPillar: false,
-            respiteReason: reason || 'Movida com acolhimento para a Caixa de Descanso.',
-          };
-        }
-        return t;
-      })
-    );
-  };
-
-  const moveMultipleToRespite = (taskIds: string[], reason?: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (taskIds.includes(t.id)) {
-          return {
-            ...t,
-            status: 'respite_moved',
-            isPillar: false,
-            respiteReason: reason || 'Pausa intencional para descompressão sem culpa.',
-          };
-        }
-        return t;
-      })
-    );
-  };
-
-  const restoreFromRespite = (taskId: string, targetDate?: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          return {
-            ...t,
-            status: 'todo',
-            dueDate: targetDate || getTodayDateStr(),
-            respiteReason: undefined,
-          };
-        }
-        return t;
-      })
-    );
-  };
-
-  const saveEra = (eraData: Omit<Era, 'id' | 'createdAt'> & { id?: string }) => {
-    if (eraData.id) {
-      setEras((prev) => prev.map((e) => (e.id === eraData.id ? { ...e, ...eraData } : e)));
-    } else {
-      const newEra: Era = {
-        ...eraData,
-        id: `era-${Date.now()}`,
-        createdAt: getTodayDateStr(),
-      };
-      setEras((prev) => [...prev, newEra]);
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'tasks', taskId), { dueDate: newDate }, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/tasks/${taskId}`);
+      }
     }
   };
 
-  const deleteEra = (eraId: string) => {
+  const moveToRespite = async (taskId: string, reason?: string) => {
+    const respiteReason = reason || 'Movida com acolhimento para a Caixa de Descanso.';
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, status: 'respite_moved', isPillar: false, respiteReason }
+          : t
+      )
+    );
+
+    if (user) {
+      try {
+        await setDoc(
+          doc(db, 'users', user.uid, 'tasks', taskId),
+          { status: 'respite_moved', isPillar: false, respiteReason },
+          { merge: true }
+        );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/tasks/${taskId}`);
+      }
+    }
+  };
+
+  const moveMultipleToRespite = async (taskIds: string[], reason?: string) => {
+    const respiteReason = reason || 'Pausa intencional para descompressão sem culpa.';
+    setTasks((prev) =>
+      prev.map((t) =>
+        taskIds.includes(t.id)
+          ? { ...t, status: 'respite_moved', isPillar: false, respiteReason }
+          : t
+      )
+    );
+
+    if (user) {
+      taskIds.forEach((id) => {
+        setDoc(
+          doc(db, 'users', user.uid, 'tasks', id),
+          { status: 'respite_moved', isPillar: false, respiteReason },
+          { merge: true }
+        ).catch(console.error);
+      });
+    }
+  };
+
+  const restoreFromRespite = async (taskId: string, targetDate?: string) => {
+    const dueDate = targetDate || getTodayDateStr();
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, status: 'todo', dueDate, respiteReason: undefined }
+          : t
+      )
+    );
+
+    if (user) {
+      try {
+        await setDoc(
+          doc(db, 'users', user.uid, 'tasks', taskId),
+          { status: 'todo', dueDate, respiteReason: null },
+          { merge: true }
+        );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/tasks/${taskId}`);
+      }
+    }
+  };
+
+  const saveEra = async (eraData: Omit<Era, 'id' | 'createdAt'> & { id?: string }) => {
+    const eraId = eraData.id || `era-${Date.now()}`;
+    const eraToSave: Era = {
+      ...eraData,
+      id: eraId,
+      userId: user?.uid,
+      createdAt: eraData.id ? (eras.find((e) => e.id === eraData.id)?.createdAt || getTodayDateStr()) : getTodayDateStr(),
+    };
+
+    setEras((prev) => {
+      const exists = prev.some((e) => e.id === eraId);
+      return exists ? prev.map((e) => (e.id === eraId ? eraToSave : e)) : [...prev, eraToSave];
+    });
+
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'eras', eraId), eraToSave, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/eras/${eraId}`);
+      }
+    }
+  };
+
+  const deleteEra = async (eraId: string) => {
     setEras((prev) => prev.filter((e) => e.id !== eraId));
-    // Find milestones of this era
     const childMilestones = milestones.filter((m) => m.eraId === eraId).map((m) => m.id);
     setMilestones((prev) => prev.filter((m) => m.eraId !== eraId));
     setTasks((prev) => prev.filter((t) => !childMilestones.includes(t.milestoneId)));
-  };
 
-  const saveMilestone = (milestoneData: Omit<Milestone, 'id'> & { id?: string }) => {
-    if (milestoneData.id) {
-      setMilestones((prev) =>
-        prev.map((m) => (m.id === milestoneData.id ? { ...m, ...milestoneData } : m))
-      );
-    } else {
-      const newMilestone: Milestone = {
-        ...milestoneData,
-        id: `mile-${Date.now()}`,
-      };
-      setMilestones((prev) => [...prev, newMilestone]);
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'eras', eraId));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/eras/${eraId}`);
+      }
     }
   };
 
-  const deleteMilestone = (milestoneId: string) => {
+  const saveMilestone = async (milestoneData: Omit<Milestone, 'id'> & { id?: string }) => {
+    const milestoneId = milestoneData.id || `mile-${Date.now()}`;
+    const milestoneToSave: Milestone = {
+      ...milestoneData,
+      id: milestoneId,
+      userId: user?.uid,
+    };
+
+    setMilestones((prev) => {
+      const exists = prev.some((m) => m.id === milestoneId);
+      return exists ? prev.map((m) => (m.id === milestoneId ? milestoneToSave : m)) : [...prev, milestoneToSave];
+    });
+
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'milestones', milestoneId), milestoneToSave, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/milestones/${milestoneId}`);
+      }
+    }
+  };
+
+  const deleteMilestone = async (milestoneId: string) => {
     setMilestones((prev) => prev.filter((m) => m.id !== milestoneId));
     setTasks((prev) => prev.filter((t) => t.milestoneId !== milestoneId));
-  };
 
-  const saveTimeBlock = (tbData: Omit<TimeBlock, 'id'> & { id?: string }) => {
-    if (tbData.id) {
-      setTimeBlocks((prev) => prev.map((tb) => (tb.id === tbData.id ? { ...tb, ...tbData } : tb)));
-    } else {
-      const newTb: TimeBlock = {
-        ...tbData,
-        id: `tb-${Date.now()}`,
-      };
-      setTimeBlocks((prev) => [...prev, newTb]);
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'milestones', milestoneId));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/milestones/${milestoneId}`);
+      }
     }
   };
 
-  const deleteTimeBlock = (timeBlockId: string) => {
+  const saveTimeBlock = async (tbData: Omit<TimeBlock, 'id'> & { id?: string }) => {
+    const blockId = tbData.id || `tb-${Date.now()}`;
+    const blockToSave: TimeBlock = {
+      ...tbData,
+      id: blockId,
+      userId: user?.uid,
+    };
+
+    setTimeBlocks((prev) => {
+      const exists = prev.some((tb) => tb.id === blockId);
+      return exists ? prev.map((tb) => (tb.id === blockId ? blockToSave : tb)) : [...prev, blockToSave];
+    });
+
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'timeBlocks', blockId), blockToSave, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/timeBlocks/${blockId}`);
+      }
+    }
+  };
+
+  const deleteTimeBlock = async (timeBlockId: string) => {
     setTimeBlocks((prev) => prev.filter((tb) => tb.id !== timeBlockId));
+
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'timeBlocks', timeBlockId));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/timeBlocks/${timeBlockId}`);
+      }
+    }
   };
 
   // Habits methods
-  const saveHabit = (habitData: Omit<Habit, 'id' | 'createdAt' | 'completedDates'> & { id?: string; completedDates?: string[] }) => {
-    if (habitData.id) {
-      setHabits((prev) =>
-        prev.map((h) => (h.id === habitData.id ? { ...h, ...habitData } : h))
-      );
-      if (habitData.taskId) {
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === habitData.taskId
-              ? { ...t, title: habitData.title, lifeArea: habitData.lifeArea, isHabit: true }
-              : t
-          )
-        );
-      }
-    } else {
-      const habitId = `habit-${Date.now()}`;
-      let createdTaskId = habitData.taskId;
+  const saveHabit = async (
+    habitData: Omit<Habit, 'id' | 'createdAt' | 'completedDates'> & { id?: string; completedDates?: string[] }
+  ) => {
+    const habitId = habitData.id || `habit-${Date.now()}`;
+    let createdTaskId = habitData.taskId;
 
-      if (habitData.isTask && !createdTaskId) {
-        createdTaskId = `task-${Date.now()}`;
-        const newTask: Task = {
-          id: createdTaskId,
-          title: habitData.title,
-          milestoneId: milestones[0]?.id || '',
-          dueDate: getTodayDateStr(),
-          createdAt: getTodayDateStr(),
-          priorityType: 'deadline',
-          status: 'todo',
-          estimatedMinutes: 20,
-          isHabit: true,
-          habitId: habitId,
-          lifeArea: habitData.lifeArea,
-          notes: habitData.description,
-        };
-        setTasks((prev) => [newTask, ...prev]);
-      }
-
-      const newHabit: Habit = {
-        ...habitData,
-        id: habitId,
-        taskId: createdTaskId,
+    if (habitData.isTask && !createdTaskId) {
+      createdTaskId = `task-${Date.now()}`;
+      const newTask: Task = {
+        id: createdTaskId,
+        userId: user?.uid,
+        title: habitData.title,
+        milestoneId: milestones[0]?.id || '',
+        dueDate: getTodayDateStr(),
         createdAt: getTodayDateStr(),
-        completedDates: habitData.completedDates || [],
+        priorityType: 'deadline',
+        status: 'todo',
+        estimatedMinutes: 20,
+        isHabit: true,
+        habitId: habitId,
+        lifeArea: habitData.lifeArea,
+        notes: habitData.description,
       };
-      setHabits((prev) => [...prev, newHabit]);
+      setTasks((prev) => [newTask, ...prev]);
+      if (user) {
+        setDoc(doc(db, 'users', user.uid, 'tasks', createdTaskId), newTask, { merge: true }).catch(console.error);
+      }
+    }
+
+    const habitToSave: Habit = {
+      ...habitData,
+      id: habitId,
+      userId: user?.uid,
+      taskId: createdTaskId,
+      createdAt: habitData.id ? (habits.find((h) => h.id === habitData.id)?.createdAt || getTodayDateStr()) : getTodayDateStr(),
+      completedDates: habitData.completedDates || [],
+    };
+
+    setHabits((prev) => {
+      const exists = prev.some((h) => h.id === habitId);
+      return exists ? prev.map((h) => (h.id === habitId ? habitToSave : h)) : [...prev, habitToSave];
+    });
+
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'habits', habitId), habitToSave, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/habits/${habitId}`);
+      }
     }
   };
 
-  const deleteHabit = (habitId: string) => {
+  const deleteHabit = async (habitId: string) => {
     setHabits((prev) => prev.filter((h) => h.id !== habitId));
+
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'habits', habitId));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/habits/${habitId}`);
+      }
+    }
   };
 
-  const toggleHabitDate = (habitId: string, dateStr: string) => {
-    const todayStr = getTodayDateStr();
-    let willBeCompleted = false;
-    let linkedTaskId: string | undefined = undefined;
-
-    setHabits((prev) =>
-      prev.map((h) => {
-        if (h.id !== habitId) return h;
-        linkedTaskId = h.taskId;
-        const exists = h.completedDates.includes(dateStr);
-        willBeCompleted = !exists;
-        const newDates = exists
-          ? h.completedDates.filter((d) => d !== dateStr)
-          : [...h.completedDates, dateStr];
-        return { ...h, completedDates: newDates };
-      })
+  const toggleHabitDate = async (habitId: string, dateStr: string) => {
+    const nextState = habitSyncReducer(
+      { habits, tasks },
+      { type: 'TOGGLE_HABIT_DATE', payload: { habitId, dateStr } }
     );
 
-    // If toggled for today and has linked task, sync task status
-    if (dateStr === todayStr && linkedTaskId) {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === linkedTaskId
-            ? {
-                ...t,
-                status: willBeCompleted ? 'completed' : 'todo',
-                completedAt: willBeCompleted ? new Date().toISOString() : undefined,
-              }
-            : t
-        )
-      );
+    setHabits(nextState.habits);
+    setTasks(nextState.tasks);
+
+    if (user) {
+      const updatedH = nextState.habits.find((h) => h.id === habitId);
+      if (updatedH) {
+        setDoc(
+          doc(db, 'users', user.uid, 'habits', habitId),
+          { completedDates: updatedH.completedDates },
+          { merge: true }
+        ).catch((err) => {
+          Logger.log('error', `Falha ao sincronizar hábito ${habitId}`, err);
+        });
+      }
+
+      const updatedT = nextState.tasks.find((t) => t.id === updatedH?.taskId);
+      if (updatedT) {
+        setDoc(
+          doc(db, 'users', user.uid, 'tasks', updatedT.id),
+          { status: updatedT.status, completedAt: updatedT.completedAt || null },
+          { merge: true }
+        ).catch((err) => {
+          Logger.log('error', `Falha ao sincronizar tarefa do hábito ${updatedT.id}`, err);
+        });
+      }
     }
   };
 
   // Monthly & Semester Focus methods
-  const saveMonthFocus = (focus: MonthFocus) => {
+  const saveMonthFocus = async (focus: MonthFocus) => {
+    const toSave = { ...focus, userId: user?.uid };
     setMonthFocuses((prev) => {
       const exists = prev.some((mf) => mf.monthKey === focus.monthKey);
-      if (exists) {
-        return prev.map((mf) => (mf.monthKey === focus.monthKey ? focus : mf));
-      }
-      return [...prev, focus];
+      return exists ? prev.map((mf) => (mf.monthKey === focus.monthKey ? toSave : mf)) : [...prev, toSave];
     });
-  };
 
-  const saveSemesterGoal = (goalData: Omit<SemesterGoal, 'id'> & { id?: string }) => {
-    if (goalData.id) {
-      setSemesterGoals((prev) =>
-        prev.map((g) => (g.id === goalData.id ? { ...g, ...goalData } : g))
-      );
-    } else {
-      const newGoal: SemesterGoal = {
-        ...goalData,
-        id: `sem-${Date.now()}`,
-      };
-      setSemesterGoals((prev) => [...prev, newGoal]);
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'monthFocuses', focus.monthKey), toSave, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/monthFocuses/${focus.monthKey}`);
+      }
     }
   };
 
-  const deleteSemesterGoal = (goalId: string) => {
-    setSemesterGoals((prev) => prev.filter((g) => g.id !== goalId));
+  const saveSemesterGoal = async (goalData: Omit<SemesterGoal, 'id'> & { id?: string }) => {
+    const goalId = goalData.id || `sem-${Date.now()}`;
+    const toSave: SemesterGoal = { ...goalData, id: goalId, userId: user?.uid };
+
+    setSemesterGoals((prev) => {
+      const exists = prev.some((g) => g.id === goalId);
+      return exists ? prev.map((g) => (g.id === goalId ? toSave : g)) : [...prev, toSave];
+    });
+
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'semesterGoals', goalId), toSave, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/semesterGoals/${goalId}`);
+      }
+    }
   };
 
-  const toggleSemesterGoalStatus = (goalId: string) => {
+  const deleteSemesterGoal = async (goalId: string) => {
+    setSemesterGoals((prev) => prev.filter((g) => g.id !== goalId));
+
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'semesterGoals', goalId));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/semesterGoals/${goalId}`);
+      }
+    }
+  };
+
+  const toggleSemesterGoalStatus = async (goalId: string) => {
+    const target = semesterGoals.find((g) => g.id === goalId);
+    if (!target) return;
+
+    const nextStatus: SemesterGoal['status'] =
+      target.status === 'completed' ? 'in_progress' : target.status === 'in_progress' ? 'completed' : 'in_progress';
+
     setSemesterGoals((prev) =>
-      prev.map((g) => {
-        if (g.id !== goalId) return g;
-        const nextStatus: SemesterGoal['status'] =
-          g.status === 'completed' ? 'in_progress' : g.status === 'in_progress' ? 'completed' : 'in_progress';
-        return { ...g, status: nextStatus };
-      })
+      prev.map((g) => (g.id === goalId ? { ...g, status: nextStatus } : g))
     );
+
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'semesterGoals', goalId), { status: nextStatus }, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/semesterGoals/${goalId}`);
+      }
+    }
+  };
+
+  const clearAllData = () => {
+    setEras([]);
+    setMilestones([]);
+    setTasks([]);
+    setTimeBlocks([]);
+    setHabits([]);
+    setMonthFocuses([]);
+    setSemesterGoals([]);
+    setDailyCheckin({
+      date: getTodayDateStr(),
+      energyLevel: 'medium',
+      selectedPillars: [],
+      intention: '',
+      completedCheckin: false,
+    });
   };
 
   // Prioritized Tasks Calculation based on Algoritmo de Priorização Automática
   const prioritizedDailyTasks = useMemo(() => {
     const todayStr = getTodayDateStr();
-    // Exclude tasks in respite box and tasks in brain dump without a scheduled date
     const activeCandidates = tasks.filter(
       (t) => t.status !== 'respite_moved' && !!t.dueDate && t.dueDate.trim() !== ''
     );
@@ -717,11 +914,7 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const energy = dailyCheckin.energyLevel;
 
     if (energy === 'high') {
-      // Energia "Alta": As tarefas são ordenadas de forma mista priorizando o prazo de
-      // vencimento da meta-mãe (targetDate mais próxima) em conjunto com tarefas de criação
-      // mais antiga que estejam estagnadas, maximizando a entrega de impacto.
       return [...activeCandidates].sort((a, b) => {
-        // Pillars come first
         if (a.isPillar && !b.isPillar) return -1;
         if (!a.isPillar && b.isPillar) return 1;
 
@@ -735,25 +928,18 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return targetA.localeCompare(targetB);
         }
 
-        // Secondary: creation date (older first to unblock stagnated)
         return a.createdAt.localeCompare(b.createdAt);
       });
     }
 
     if (energy === 'medium') {
-      // Energia "Média": O algoritmo filtra o volume de tarefas diárias sugerindo apenas as 3
-      // principais não-negociáveis vinculadas às prioridades do dia, reduzindo o escopo sem paralisar.
       const pillars = activeCandidates.filter((t) => t.isPillar);
       const others = activeCandidates.filter((t) => !t.isPillar && (t.dueDate <= todayStr || t.status === 'in_progress'));
       return [...pillars, ...others];
     }
 
-    // Energia "Baixa" / Resguardo:
-    // O sistema oculta a urgência por prazos e prioriza exclusivamente tarefas leves de manutenção ou autocuidado.
-    return [...activeCandidates].sort((a, b) => {
-      // Prioritize smaller duration (light maintenance)
-      return a.estimatedMinutes - b.estimatedMinutes;
-    });
+    // Energia "Baixa" / Resguardo
+    return [...activeCandidates].sort((a, b) => a.estimatedMinutes - b.estimatedMinutes);
   }, [tasks, dailyCheckin.energyLevel, milestones]);
 
   const respiteTasks = useMemo(() => {

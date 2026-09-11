@@ -3,6 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://apis.google.com https://*.firebaseapp.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      img-src 'self' data: blob: https:;
+      font-src 'self' data: https://fonts.gstatic.com;
+      connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.run.app;
+      frame-src 'self' https://*.firebaseapp.com;
+      base-uri 'self';
+      form-action 'self';
+    " />
     <title>plan.me</title>
     <meta name="description" content="Sistema de planejamento diário e realização de sonhos com trilha de metas, blocos de foco e flexibilidade sem culpa." />
     <meta property="og:title" content="plan.me" />

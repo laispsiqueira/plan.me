@@ -19,7 +19,9 @@ import {
   Info,
   Image as ImageIcon,
   X,
+  AlertCircle,
 } from 'lucide-react';
+import { FileValidator } from '../lib/validation/FileValidator';
 
 interface ChatMessage {
   id: string;
@@ -36,6 +38,7 @@ export const DumpChat: React.FC = () => {
 
   const [inputMessage, setInputMessage] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -61,7 +64,15 @@ export const DumpChat: React.FC = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const handleImageFile = (file: File) => {
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file) return;
+    setUploadError(null);
+
+    const validation = FileValidator.validateImage(file);
+    if (!validation.valid) {
+      setUploadError(validation.error || 'Arquivo inválido.');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       setAttachedImage(reader.result as string);
@@ -615,6 +626,23 @@ export const DumpChat: React.FC = () => {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Upload error banner */}
+      {uploadError && (
+        <div className="px-4 py-2 bg-[#FDF2F0] border-t border-[#F5C7C1] text-[#9E3426] text-xs flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-[#C93B2B]" />
+            <span>{uploadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setUploadError(null)}
+            className="p-1 rounded-md hover:bg-[#FBE5E1] text-[#9E3426] cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Attached image preview bar */}
       {attachedImage && (

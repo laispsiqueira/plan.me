@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection test probe
+    match /test/connection {
+      allow get: if true;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Isolated user tree: All user data resides under /users/{userId}
+    match /users/{userId} {
+      allow get, update: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId);
+      allow delete: if false;
+
+      // Tasks: only the owning user can list, get, create, update, or delete
+      match /tasks/{taskId} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(taskId);
+      }
+
+      // Habits
+      match /habits/{habitId} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(habitId);
+      }
+
+      // Time Blocks
+      match /timeBlocks/{blockId} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(blockId);
+      }
+
+      // Respite Box Tasks
+      match /respiteTasks/{respiteId} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(respiteId);
+      }
+
+      // Wheel of Life
+      match /wheelOfLife/{cycleId} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(cycleId);
+      }
+
+      // Daily Energy Checkins
+      match /dailyCheckins/{dateStr} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(dateStr);
+      }
+
+      // Eras
+      match /eras/{eraId} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(eraId);
+      }
+
+      // Milestones
+      match /milestones/{milestoneId} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(milestoneId);
+      }
+
+      // Month Focuses
+      match /monthFocuses/{monthKey} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(monthKey);
+      }
+
+      // Semester Goals
+      match /semesterGoals/{goalId} {
+        allow list: if isOwner(userId);
+        allow get, create, update, delete: if isOwner(userId) && isValidId(goalId);
+      }
+    }
+  }
+}

@@ -1,0 +1,224 @@
+{
+  "entities": {
+    "user": {
+      "title": "User Profile",
+      "description": "Per-user profile and metadata",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "name", "email"]
+    },
+    "task": {
+      "title": "Task Item",
+      "description": "Private tasks created by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "milestoneId": { "type": "string" },
+        "title": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "estimatedMinutes": { "type": "number" },
+        "isPillar": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "completedAt": { "type": "string" },
+        "isHabit": { "type": "boolean" },
+        "habitId": { "type": "string" },
+        "priorityType": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "status"]
+    },
+    "habit": {
+      "title": "Habit Item",
+      "description": "Habit tracking item belonging to the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "lifeArea": { "type": "string" },
+        "frequencyType": { "type": "string" },
+        "targetCount": { "type": "number" },
+        "streak": { "type": "number" },
+        "completedDates": { "type": "array" },
+        "taskId": { "type": "string" },
+        "isTask": { "type": "boolean" }
+      },
+      "required": ["id", "userId", "title", "lifeArea", "frequencyType"]
+    },
+    "timeBlock": {
+      "title": "Time Block",
+      "description": "Daily calendar 30-min schedule blocks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string" },
+        "taskId": { "type": "string" }
+      },
+      "required": ["id", "userId", "date", "startTime", "endTime", "title", "type"]
+    },
+    "respiteTask": {
+      "title": "Respite Task",
+      "description": "Tasks paused without guilt into the respite box",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "taskId": { "type": "string" },
+        "originalTitle": { "type": "string" },
+        "movedAt": { "type": "string" },
+        "reason": { "type": "string" },
+        "reviewDate": { "type": "string" }
+      },
+      "required": ["id", "userId", "taskId", "originalTitle", "movedAt"]
+    },
+    "wheelOfLife": {
+      "title": "Wheel of Life Evaluation",
+      "description": "Biannual radar assessment across 8 dimensions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "semesterKey": { "type": "string" },
+        "scores": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "semesterKey"]
+    },
+    "dailyCheckin": {
+      "title": "Daily Checkin",
+      "description": "Morning energy and intention logging",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "energy": { "type": "string" },
+        "intention": { "type": "string" }
+      },
+      "required": ["id", "userId", "date", "energy"]
+    },
+    "era": {
+      "title": "Strategic Era",
+      "description": "Strategic life and business era horizons",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "theme": { "type": "string" },
+        "icon": { "type": "string" },
+        "color": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "milestonesCount": { "type": "number" }
+      },
+      "required": ["id", "userId", "name"]
+    },
+    "milestone": {
+      "title": "Strategic Milestone",
+      "description": "Milestone linked to a strategic Era",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "eraId": { "type": "string" },
+        "title": { "type": "string" },
+        "targetDate": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "progress": { "type": "number" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "userId", "eraId", "title"]
+    },
+    "monthFocus": {
+      "title": "Month Focus",
+      "description": "Monthly strategic themes and key deliverables",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "monthKey": { "type": "string" },
+        "theme": { "type": "string" },
+        "primaryDeliverable": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["monthKey", "theme"]
+    },
+    "semesterGoal": {
+      "title": "Semester Goal",
+      "description": "Tactical goals broken down across semesters and months",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "semesterKey": { "type": "string" },
+        "monthKey": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed"] },
+        "milestoneId": { "type": "string" }
+      },
+      "required": ["id", "semesterKey", "monthKey", "title", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "user",
+      "description": "User profile with isolation"
+    },
+    "/users/{userId}/tasks/{taskId}": {
+      "schema": "task",
+      "description": "Isolated tasks per user"
+    },
+    "/users/{userId}/habits/{habitId}": {
+      "schema": "habit",
+      "description": "Isolated habits per user"
+    },
+    "/users/{userId}/timeBlocks/{blockId}": {
+      "schema": "timeBlock",
+      "description": "Isolated time blocks per user"
+    },
+    "/users/{userId}/respiteTasks/{respiteId}": {
+      "schema": "respiteTask",
+      "description": "Isolated respite tasks per user"
+    },
+    "/users/{userId}/wheelOfLife/{cycleId}": {
+      "schema": "wheelOfLife",
+      "description": "Isolated wheel of life entries per user"
+    },
+    "/users/{userId}/dailyCheckins/{dateStr}": {
+      "schema": "dailyCheckin",
+      "description": "Isolated daily check-ins per user"
+    },
+    "/users/{userId}/eras/{eraId}": {
+      "schema": "era",
+      "description": "Isolated eras per user"
+    },
+    "/users/{userId}/milestones/{milestoneId}": {
+      "schema": "milestone",
+      "description": "Isolated milestones per user"
+    },
+    "/users/{userId}/monthFocuses/{monthKey}": {
+      "schema": "monthFocus",
+      "description": "Isolated monthly focuses per user"
+    },
+    "/users/{userId}/semesterGoals/{goalId}": {
+      "schema": "semesterGoal",
+      "description": "Isolated semester goals per user"
+    }
+  }
+}

@@ -1,19 +1,20 @@
 import { Era, Milestone, Task, TimeBlock, DailyCheckin, Habit, MonthFocus, SemesterGoal } from '../types';
 
 export const getTodayDateStr = (): string => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  // Use UTC to avoid timezone issues
+  const today = new Date();
+  const year = today.getUTCFullYear();
+  const month = String(today.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(today.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
 
 export const getRelativeDateStr = (offsetDays: number): string => {
   const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
 

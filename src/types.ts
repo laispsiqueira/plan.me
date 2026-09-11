@@ -16,6 +16,7 @@ export type LifeArea =
 
 export interface Era {
   id: string;
+  userId?: string;
   title: string;
   description: string;
   category: LifeArea;
@@ -29,6 +30,7 @@ export interface Era {
 
 export interface Milestone {
   id: string;
+  userId?: string;
   eraId: string;
   title: string;
   targetDate: string; // YYYY-MM-DD
@@ -44,6 +46,7 @@ export type HabitFrequencyType =
 
 export interface Habit {
   id: string;
+  userId?: string;
   title: string;
   description?: string;
   lifeArea: LifeArea;
@@ -68,6 +71,7 @@ export interface Habit {
 }
 
 export interface MonthFocus {
+  userId?: string;
   monthKey: string; // e.g. "2026-09"
   theme: string;
   primaryDeliverable: string;
@@ -76,6 +80,7 @@ export interface MonthFocus {
 
 export interface SemesterGoal {
   id: string;
+  userId?: string;
   semesterKey: string; // e.g. "2026-S2"
   monthKey: string; // e.g. "2026-09"
   title: string;
@@ -86,6 +91,7 @@ export interface SemesterGoal {
 
 export interface Task {
   id: string;
+  userId?: string;
   milestoneId: string;
   title: string;
   dueDate: string; // YYYY-MM-DD
@@ -106,6 +112,7 @@ export interface Task {
 
 export interface TimeBlock {
   id: string;
+  userId?: string;
   date: string; // YYYY-MM-DD
   startTime: string; // e.g. "08:30"
   endTime: string;   // e.g. "10:00"
@@ -115,6 +122,7 @@ export interface TimeBlock {
 }
 
 export interface DailyCheckin {
+  userId?: string;
   date: string; // YYYY-MM-DD
   energyLevel: EnergyLevel;
   selectedPillars: string[]; // Task IDs chosen as non-negotiable for the day

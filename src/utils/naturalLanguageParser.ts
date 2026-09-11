@@ -1,5 +1,10 @@
 import { PriorityCriterion } from '../types';
 import { getTodayDateStr, getRelativeDateStr } from '../data/initialData';
+import { RateLimiter } from '../lib/rateLimit/RateLimiter';
+
+const parserLimiter = new RateLimiter(1000, 60000); // 1000 calls/min
+const MAX_INPUT_LENGTH = 100_000; // 100KB
+const MAX_LINES = 1000;
 
 export interface ParsedDumpItem {
   id: string;
@@ -35,11 +40,26 @@ const WEEKDAYS_MAP: Record<string, number> = {
 export const parseNaturalLanguageDump = (rawText: string): ParsedDumpItem[] => {
   if (!rawText.trim()) return [];
 
-  // Check if multiple lines or list format
+  if (rawText.length > MAX_INPUT_LENGTH) {
+    throw new Error(
+      `Entrada muito grande (${rawText.length} bytes, máximo ${MAX_INPUT_LENGTH}). Por favor divida em partes menores.`
+    );
+  }
+
+  if (!parserLimiter.isAllowed()) {
+    throw new Error('Limite de taxa do analisador excedido. Tente novamente em um instante.');
+  }
+
+  // Check if multiple lines or list format, limited to MAX_LINES
   const rawLines = rawText
     .split(/\n+/)
+    .slice(0, MAX_LINES)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
+
+  if (rawLines.length >= MAX_LINES) {
+    console.warn(`Entrada truncada em ${MAX_LINES} linhas`);
+  }
 
   // If input contains multiple items (e.g. numbered list, bullet points)
   const itemsToProcess = rawLines.length > 1 && rawLines.some((l) => /^(\d+[\.\)]|[-*•])\s+/.test(l))
@@ -143,6 +163,15 @@ const parseSingleItem = (rawText: string, id: string): ParsedDumpItem => {
           }
         }
       }
+    }
+  }
+
+  // Validate parsed date
+  if (dueDate) {
+    const parsedTime = Date.parse(dueDate);
+    if (isNaN(parsedTime)) {
+      dueDate = '';
+      detectedDateLabel = 'Data inválida';
     }
   }
 
