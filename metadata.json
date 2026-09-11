@@ -1,0 +1,6 @@
+{
+  "name": "plan.me",
+  "description": "Sistema de planejamento diário e realização de sonhos com trilha de metas, blocos de foco e flexibilidade sem culpa.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
